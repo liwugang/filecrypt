@@ -1,10 +1,10 @@
 # filecrypt
 ## Summary
 
-filecrypt - A simple tool for encrypt/decrypt files with user supplied password. Without the right password the file can't be decrypted.
+filecrypt - A simple tool for encrypt/decrypt files with user supplied password. Without the right password the files can't be decrypted.
 ## Usage
 ```c
-usage: ./filecrypt [-e|-d] [-r] [-p password] [-h] path
+usage: filecrypt [-e|-d] [-r] [-p password] [-h] path
   -e        encrypt the files in the path
   -d        decrypt the files in the path
   -r        recursive the path
