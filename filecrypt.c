@@ -32,19 +32,22 @@ char *get_crypt_file_name(const char *file_name) {
 
 void usage(const char *exec_name) {
     printf("%s: A simple encrypt/decrypt file tool\n\n", exec_name);
-    printf("usage: %s [-e|-d] [-r] [-p password] [-h] path\n", exec_name);
+    printf("usage: %s [-e|-d] [-r] [-p password] [-a algorithm] [-h] path\n", exec_name);
 
     printf("  -e        encrypt the files in the path\n");
     printf("  -d        decrypt the files in the path\n");
     printf("  -r        recursive the path\n");
     printf("  -p        password to encrypt or decrypt\n");
+    printf("  -a        select algorithm to encrypt and decrypt the files which encrypted by it\n");
+    printf("            supported algorithms: [xor, aes], xor is default\n");
     printf("  -h        show this usage\n");
 }
 
-int crypt_file(const char *file_name, int encrypt, int decrypt, const char *password) {
+int crypt_file(const char *file_name, int encrypt, int decrypt, const char *password, int algorithm_id) {
     int fd = -1, wfd = -1;
     int encrypted = FALSE;
-    int need_delete = FALSE;
+    int delete_origin = FALSE;
+    int delete_new = FALSE;
     uint64_t file_length;
     uint64_t dest_file_length;
     crypt_operations *ops;
@@ -56,7 +59,6 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
 
     void *source_addr = MAP_FAILED;
     void *dest_addr = MAP_FAILED;
-
 
     fd = open(file_name, O_RDONLY);
     if (fd < 0) {
@@ -74,6 +76,7 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
             dest_file_name = (char *) malloc(crypt_info.file_name_length);
             dest_file_length = crypt_info.file_length;
             read(fd, dest_file_name, crypt_info.file_name_length);
+            // TODO: should check the file length equal to crypt_info.crypt_file_length
             encrypted = TRUE;
         }
     }
@@ -81,19 +84,17 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
         init_crypt_info(&crypt_info);
         crypt_info.file_length = file_length;
         crypt_info.file_name_length = strlen(file_name) + 1;
-        crypt_info.crypt_algorithm = ALGORITHM_XOR; // TODO: the algorithm is selected by command line
+        crypt_info.crypt_algorithm = algorithm_id == ALGORITHM_MAX ? ALGORITHM_DEFAULT : algorithm_id;
         init_algs_info(&crypt_info);
         dest_file_name = get_crypt_file_name(file_name);
         dest_file_length = crypt_info.crypt_file_length;
     }
-    ops = get_crypt_ops(crypt_info.crypt_algorithm);
-    if (!ops) {
-        printf("the algorithm: %d is not supported!\n", crypt_info.crypt_algorithm);
-        goto CLEANUP;
+    if (crypt_info.crypt_algorithm != algorithm_id && algorithm_id != ALGORITHM_MAX) {
+        encrypt = decrypt = FALSE;
     }
     if (encrypt) {
         if (encrypted) {
-            printf("%-30shave encrypted\n", file_name);
+            printf("%-30shave encrypted     %s\n", file_name, get_algorithm_name(crypt_info.crypt_algorithm));
             goto CLEANUP;
         }
     } else if (decrypt) {
@@ -103,24 +104,28 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
         }
     } else {
         if (encrypted) {
-            printf("%-30shave encrypted     %s\n", file_name, dest_file_name);
+            printf("%-30shave encrypted     %s     %s\n", file_name,
+                    get_algorithm_name(crypt_info.crypt_algorithm), dest_file_name);
         } else {
             printf("%-30shave not encrypted\n", file_name);
         }
         goto CLEANUP;
     }
 
+    ops = get_crypt_ops(crypt_info.crypt_algorithm);
+    if (!ops) {
+        printf("the algorithm: %d is not supported!\n", crypt_info.crypt_algorithm);
+        goto CLEANUP;
+    }
     if (!strlen(password)) {
         printf("%-30sthe password must be at least one!\n", file_name);
         goto CLEANUP;
     }
-
     source_addr = mmap(NULL, file_length, PROT_READ, MAP_PRIVATE, fd, 0);
     if (source_addr == MAP_FAILED) {
         printf("%-30ssource addr error: %d!\n", file_name, errno);
         goto CLEANUP;
     }
-
 
     wfd = open(dest_file_name, O_RDWR | O_CREAT, st.st_mode | 0x1FF);
     ftruncate(wfd, dest_file_length);
@@ -131,23 +136,28 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
     }
 
     if (encrypt) {
-        ops->encrypt(&crypt_info, password, source_addr, dest_addr + crypt_info.crypt_file_offset);
-        memcpy(dest_addr, &crypt_info, sizeof(crypt_info));
-        memcpy(dest_addr + sizeof(crypt_info), file_name, strlen(file_name) + 1);
-        printf("%-30sencrypt done!\n", file_name);
-        need_delete = TRUE;
+        if (ops->encrypt(&crypt_info, password, source_addr, dest_addr + crypt_info.crypt_file_offset)) {
+            memcpy(dest_addr, &crypt_info, sizeof(crypt_info));
+            memcpy(dest_addr + sizeof(crypt_info), file_name, strlen(file_name) + 1);
+            printf("%-30sencrypt done!\n", file_name);
+            delete_origin = TRUE;
+        } else {
+            printf("%-30sencrypt failed!\n", file_name);
+            delete_new = TRUE;
+        }
     } else {
         if (!ops->is_right_password(&crypt_info, password)) {
             printf("%-30sthe password is not right!\n", file_name);
-            close(wfd);
-            wfd = -1;
-            unlink(dest_file_name);
+            delete_new = TRUE;
         } else {
-            ops->decrypt(&crypt_info, password, source_addr + crypt_info.crypt_file_offset, dest_addr);
-            printf("%-30sdecrypt done!\n", file_name);
-            need_delete = TRUE;
+            if (ops->decrypt(&crypt_info, password, source_addr + crypt_info.crypt_file_offset, dest_addr)) {
+                printf("%-30sdecrypt done!\n", file_name);
+                delete_origin = TRUE;
+            } else {
+                printf("%-30sdecrypt failed!\n", file_name);
+                delete_new = TRUE;
+            }
         }
-        
     }
     munmap(dest_addr, dest_file_length);
 
@@ -157,12 +167,13 @@ CLEANUP_SOURCE:
 CLEANUP:
     if (fd != -1) close(fd);
     if (wfd != -1) close(wfd);
+    if (delete_origin) unlink(file_name);
+    if (delete_new) unlink(dest_file_name);
     free(dest_file_name);
-    if (need_delete) unlink(file_name);
-    return 0;
+    return TRUE;
 }
 
-void walk_paths(char *path, int encrypt, int decrypt, int recursive, const char *password) {
+void walk_paths(char *path, int encrypt, int decrypt, int recursive, const char *password, int algorithm_id) {
     FTS *fts;
     FTSENT *ftsent;
 
@@ -190,7 +201,7 @@ void walk_paths(char *path, int encrypt, int decrypt, int recursive, const char 
                 chdir(dirname(dup_path));
                 free(dup_path);
             }
-            crypt_file(ftsent->fts_name, encrypt, decrypt, password);
+            crypt_file(ftsent->fts_name, encrypt, decrypt, password, algorithm_id);
             break;
         default:
             break;
@@ -200,17 +211,17 @@ void walk_paths(char *path, int encrypt, int decrypt, int recursive, const char 
     fts_close(fts);
 }
 
-
-
 int main(int argc, char **argv) {
-
     int ch;
+    int algorithm_id = ALGORITHM_MAX;
     int list = FALSE;
     int encrypt = FALSE;
     int decrypt = FALSE;
     int recursive = FALSE;
     const char *password = NULL;
     const char *path = NULL;
+    int password_space_size = 0;
+    char *new_password = NULL;
 
     struct option long_options[] = {
         {"help", no_argument, NULL, 'h'},
@@ -218,14 +229,15 @@ int main(int argc, char **argv) {
 		{"decrypt", no_argument, NULL, 'd'},
 		{"recursive", no_argument, NULL, 'r'},
 		{"password", required_argument, NULL, 'p'},
+        {"algroithm", required_argument, NULL, 'a'},
 		{NULL, 0, NULL, 0}
     };
 
-    while ((ch = getopt_long(argc, argv, "hedrp:", long_options, NULL)) != -1) {
+    while ((ch = getopt_long(argc, argv, "hedrp:a:", long_options, NULL)) != -1) {
         switch (ch) {
         case 'h':
             usage(argv[0]);
-            break;
+            exit(-1);
         case 'e':
             encrypt = TRUE;
             break;
@@ -237,6 +249,16 @@ int main(int argc, char **argv) {
             break;
         case 'p':
             password = optarg;
+            break;
+        case 'a':
+            if (!strcmp(optarg, "xor")) {
+                algorithm_id = ALGORITHM_XOR;
+            } else if (!strcmp(optarg, "aes")) {
+                algorithm_id = ALGORITHM_AES;
+            } else {
+                printf("have not support this algorithm: %s\n", optarg);
+                exit(-1);
+            }
             break;
         default:
             usage(argv[0]);
@@ -261,8 +283,16 @@ int main(int argc, char **argv) {
 
     init_algs();
 
-    for (; optind < argc; optind++) {
-        walk_paths(argv[optind], encrypt, decrypt, recursive, password);
+    if (password) {
+        password_space_size = ((strlen(password) + (AES_BLOCK_SIZE - 1)) / AES_BLOCK_SIZE + 1)
+                * AES_BLOCK_SIZE;
+        new_password = calloc(password_space_size, 1);
+        strcpy(new_password, password);
     }
+
+    for (; optind < argc; optind++) {
+        walk_paths(argv[optind], encrypt, decrypt, recursive, new_password, algorithm_id);
+    }
+    free(new_password);
     return 0;
 }
