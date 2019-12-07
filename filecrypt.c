@@ -32,7 +32,7 @@ char *get_crypt_file_name(const char *file_name) {
 
 void usage(const char *exec_name) {
     printf("%s: A simple encrypt/decrypt file tool\n\n", exec_name);
-    printf("usage: %s [-e|-d] [-r] [-p password] [-a algorithm] [-h] path\n", exec_name);
+    printf("usage: %s [-e|-d] [-r] [-p password] [-a algorithm] [-h] [-t num_threads] [-D] path\n", exec_name);
 
     printf("  -e        encrypt the files in the path\n");
     printf("  -d        decrypt the files in the path\n");
@@ -40,6 +40,8 @@ void usage(const char *exec_name) {
     printf("  -p        password to encrypt or decrypt\n");
     printf("  -a        select algorithm to encrypt and decrypt the files which encrypted by it\n");
     printf("            supported algorithms: [xor, aes], xor is default\n");
+    printf("  -t        thread num to work, range: [1 - %d], default: 1\n", get_nprocs_conf());
+    printf("  -D        open debug mode\n");
     printf("  -h        show this usage\n");
 }
 
@@ -60,9 +62,13 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
     void *source_addr = MAP_FAILED;
     void *dest_addr = MAP_FAILED;
 
+    char *dup_path = strdup(file_name);
+    chdir(dirname(dup_path));
+    free(dup_path);
+
     fd = open(file_name, O_RDONLY);
     if (fd < 0) {
-        printf("open file error!\n");
+        printf("open file error %s - %s!\n", file_name, strerror(errno));
         return -1;
     }
     fstat(fd, &st);
@@ -196,12 +202,9 @@ void walk_paths(char *path, int encrypt, int decrypt, int recursive, const char 
             }
             break;
         case FTS_F:
-            if (!strcmp(ftsent->fts_path, real_path)) {
-                char *dup_path = strdup(real_path);
-                chdir(dirname(dup_path));
-                free(dup_path);
-            }
-            crypt_file(ftsent->fts_name, encrypt, decrypt, password, algorithm_id);
+            // crypt_file(ftsent->fts_name, encrypt, decrypt, password, algorithm_id);
+            doing_work(ftsent->fts_path, ftsent->fts_statp->st_size);
+            // ftsent->fts_name);
             break;
         default:
             break;
@@ -222,6 +225,8 @@ int main(int argc, char **argv) {
     const char *path = NULL;
     int password_space_size = 0;
     char *new_password = NULL;
+    int thread_num = 1; // default use the main thread
+    int debug_mode = FALSE;
 
     struct option long_options[] = {
         {"help", no_argument, NULL, 'h'},
@@ -230,10 +235,12 @@ int main(int argc, char **argv) {
 		{"recursive", no_argument, NULL, 'r'},
 		{"password", required_argument, NULL, 'p'},
         {"algroithm", required_argument, NULL, 'a'},
+        {"thread", required_argument, NULL, 't'},
+        {"debug", no_argument, NULL, 'D'},
 		{NULL, 0, NULL, 0}
     };
 
-    while ((ch = getopt_long(argc, argv, "hedrp:a:", long_options, NULL)) != -1) {
+    while ((ch = getopt_long(argc, argv, "hedrp:a:t:D", long_options, NULL)) != -1) {
         switch (ch) {
         case 'h':
             usage(argv[0]);
@@ -260,6 +267,12 @@ int main(int argc, char **argv) {
                 exit(-1);
             }
             break;
+        case 't':
+            thread_num = atoi(optarg);
+            break;
+        case 'D':
+            debug_mode = TRUE;
+            break;
         default:
             usage(argv[0]);
             exit(-1);
@@ -273,6 +286,10 @@ int main(int argc, char **argv) {
 
     if ((encrypt || decrypt) && !password) {
         printf("need password!\n");
+        exit(-1);
+    }
+    if (thread_num < 1 || thread_num > get_nprocs_conf()) {
+        printf("thread nums is not valid! must be in range [1, %d]\n", get_nprocs_conf());
         exit(-1);
     }
 
@@ -290,9 +307,11 @@ int main(int argc, char **argv) {
         strcpy(new_password, password);
     }
 
+    thread_manager_init(encrypt, decrypt, new_password, algorithm_id, thread_num, debug_mode);
     for (; optind < argc; optind++) {
         walk_paths(argv[optind], encrypt, decrypt, recursive, new_password, algorithm_id);
     }
+    wait_threads_exit();
     free(new_password);
     return 0;
 }
