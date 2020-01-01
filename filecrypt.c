@@ -52,6 +52,7 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
     int delete_new = FALSE;
     uint64_t file_length;
     uint64_t dest_file_length;
+    uint64_t need_space_size;
     crypt_operations *ops;
 
     struct stat st;
@@ -81,6 +82,7 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
         if (crypt_info_valid(&crypt_info)) {
             dest_file_name = (char *) malloc(crypt_info.file_name_length);
             dest_file_length = crypt_info.file_length;
+            need_space_size = dest_file_length + AES_BLOCK_SIZE; // need more space. If filesize > AES_MAX_SIZE
             read(fd, dest_file_name, crypt_info.file_name_length);
             // TODO: should check the file length equal to crypt_info.crypt_file_length
             encrypted = TRUE;
@@ -94,6 +96,7 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
         init_algs_info(&crypt_info);
         dest_file_name = get_crypt_file_name(file_name);
         dest_file_length = crypt_info.crypt_file_length;
+        need_space_size = dest_file_length;
     }
     if (crypt_info.crypt_algorithm != algorithm_id && algorithm_id != ALGORITHM_MAX) {
         encrypt = decrypt = FALSE;
@@ -134,8 +137,8 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
     }
 
     wfd = open(dest_file_name, O_RDWR | O_CREAT, st.st_mode | 0x1FF);
-    ftruncate(wfd, dest_file_length);
-    dest_addr = mmap(NULL, dest_file_length, PROT_READ | PROT_WRITE, MAP_SHARED, wfd, 0);
+    ftruncate(wfd, need_space_size);
+    dest_addr = mmap(NULL, need_space_size, PROT_READ | PROT_WRITE, MAP_SHARED, wfd, 0);
     if (dest_addr == MAP_FAILED) {
         printf("%-30sdest source error: %d\n", file_name, errno);
         goto CLEANUP_SOURCE;
@@ -165,7 +168,10 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
             }
         }
     }
-    munmap(dest_addr, dest_file_length);
+    munmap(dest_addr, need_space_size);
+    if (need_space_size != dest_file_length) {
+        ftruncate(wfd, dest_file_length);
+    }
 
 CLEANUP_SOURCE:
     munmap(source_addr, file_length);

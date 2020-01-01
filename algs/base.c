@@ -54,7 +54,7 @@ int aes_encrypt_common(uint8_t *input, uint64_t length, const unsigned char *pas
     int result = FALSE;
     EVP_CIPHER_CTX *ctx;
     uint64_t offset = 0;
-    int have_done = 0;
+    uint64_t have_done = 0;
     int value = 0;
     int input_length = 0;
 
@@ -68,8 +68,8 @@ int aes_encrypt_common(uint8_t *input, uint64_t length, const unsigned char *pas
     }
 
     while (length) {
-        if (length > INT32_MAX) {
-            input_length = INT32_MAX;
+        if (length > AES_MAX_SIZE) {
+            input_length = AES_MAX_SIZE;
         } else {
             input_length = length;
         }
@@ -100,7 +100,7 @@ int aes_decrypt_common(uint8_t *input, uint64_t length, const unsigned char *pas
     int result = FALSE;
     EVP_CIPHER_CTX *ctx;
     uint64_t offset = 0;
-    int have_done = 0;
+    uint64_t have_done = 0;
     int value = 0;
     int input_length = 0;
 
@@ -114,8 +114,8 @@ int aes_decrypt_common(uint8_t *input, uint64_t length, const unsigned char *pas
     }
 
     while (length) {
-        if (length > INT32_MAX) {
-            input_length = INT32_MAX;
+        if (length > AES_MAX_SIZE) {
+            input_length = AES_MAX_SIZE;
         } else {
             input_length = length;
         }

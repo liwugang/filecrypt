@@ -20,8 +20,6 @@ usage: ./filecrypt [-e|-d] [-r] [-p password] [-a algorithm] [-h] [-t num_thread
 2. AES
 3. ...
 
-## TODO
-Using multiple thread to speed up the encryption and decryption.
 ## Compile
 Execute "make" in the root directory.
 ## Timeline
@@ -29,4 +27,5 @@ Execute "make" in the root directory.
 2019-04-07  first commit
 2019-04-13  add aes supported and fix the security issue
 2019-12-08  add multi-thread
+2020-01-01  fix integer overflow and crash when decrypting the big file
 ```
