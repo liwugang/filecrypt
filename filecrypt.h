@@ -25,6 +25,9 @@
 #define TRUE    1
 #define FALSE   0
 
+#define VERSION_ENCRYPT_FILENAME       1
+#define VERSION_CURRENT                1
+
 typedef struct file_crypt_info {
     uint32_t magic[2];
     uint64_t file_name_length;

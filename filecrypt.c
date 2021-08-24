@@ -1,5 +1,22 @@
 #include "filecrypt.h"
 
+// Store version in the last element of key
+static int get_version(file_crypt_info *crypt_info) {
+    if (crypt_info->key_length < sizeof(crypt_info->key)) {
+        return crypt_info->key[sizeof(crypt_info->key) - 1];
+    } else {
+        return 0;
+    }
+}
+
+static void get_file_name(file_crypt_info *crypt_info, char *file_name, int file_len) {
+    if (get_version(crypt_info) >= VERSION_ENCRYPT_FILENAME) {
+        for (int i = 0; i < file_len - 1; i++) {
+            file_name[i] ^= 0xCC;
+        }
+    }
+}
+
 static int crypt_info_valid(file_crypt_info *crypt_info) {
     uint64_t crypt_file_length;
     if (crypt_info->magic[0] != FIRST_MAGIC || crypt_info->magic[1] != SECOND_MAGIC) {
@@ -85,6 +102,7 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
             need_space_size = dest_file_length + AES_BLOCK_SIZE; // need more space. If filesize > AES_MAX_SIZE
             read(fd, dest_file_name, crypt_info.file_name_length);
             // TODO: should check the file length equal to crypt_info.crypt_file_length
+            get_file_name(&crypt_info, dest_file_name, crypt_info.file_name_length);
             encrypted = TRUE;
         }
     }
@@ -146,8 +164,14 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
 
     if (encrypt) {
         if (ops->encrypt(&crypt_info, password, source_addr, dest_addr + crypt_info.crypt_file_offset)) {
+            if (crypt_info.key_length < sizeof(crypt_info.key)) {
+                crypt_info.key[sizeof(crypt_info.key) - 1] = VERSION_CURRENT;
+            }
             memcpy(dest_addr, &crypt_info, sizeof(crypt_info));
-            memcpy(dest_addr + sizeof(crypt_info), file_name, strlen(file_name) + 1);
+            char *saved_name = strdup(file_name);
+            get_file_name(&crypt_info, saved_name, strlen(saved_name) + 1);
+            memcpy(dest_addr + sizeof(crypt_info), saved_name, strlen(saved_name) + 1);
+            free(saved_name);
             printf("%-30sencrypt done!\n", file_name);
             delete_origin = TRUE;
         } else {

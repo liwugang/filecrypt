@@ -28,4 +28,5 @@ Execute "make" in the root directory.
 2019-04-13  add aes supported and fix the security issue
 2019-12-08  add multi-thread
 2020-01-01  fix integer overflow and crash when decrypting the big file
+2021-08-24  encrypt the file name
 ```
