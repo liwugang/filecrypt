@@ -1,6 +1,6 @@
 SRCS := filecrypt.c threads.c algs/*.c
 
-CFLAGS := -lcrypto -pthread # -g -DDEBUG
+CFLAGS := -lcrypto -pthread  -fstack-protector # -g -DDEBUG
 
 all: filecrypt
 

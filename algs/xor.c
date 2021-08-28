@@ -13,7 +13,7 @@
 
 static uint64_t get_xor_key(file_crypt_info *crypt_info, const char *user_password) {
     int result = FALSE;
-    uint8_t hash_and_key[HASH256_SIZE + RANDOM_LENGTH];
+    uint8_t hash_and_key[HASH256_SIZE * 2];
     uint64_t length;
     result = aes_decrypt_common(crypt_info->key, crypt_info->key_length, user_password, DEFAULT_IV,
             hash_and_key, &length);
@@ -32,7 +32,7 @@ uint64_t xor_get_crypt_file_length(file_crypt_info *crypt_info) {
 */
 int xor_is_right_password(file_crypt_info *crypt_info, const char *user_password) {
     int result = FALSE;
-    uint8_t hash_and_key[HASH256_SIZE + RANDOM_LENGTH];
+    uint8_t hash_and_key[HASH256_SIZE * 2];
     uint64_t length;
     result = aes_decrypt_common(crypt_info->key, crypt_info->key_length, user_password, DEFAULT_IV,
             hash_and_key, &length);
