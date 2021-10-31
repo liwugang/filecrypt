@@ -40,8 +40,9 @@ char *get_crypt_file_name(const char *file_name) {
         crypt_file_name = malloc(strlen(buffer) + 1);
         strcpy(crypt_file_name, buffer);
     } else {
-        crypt_file_name = (char *) malloc(strlen(file_name) + strlen("_encrypted") + 1);
-        strcpy(crypt_file_name, file_name);
+        char *p = strrchr(file_name, '/') + 1;
+        crypt_file_name = (char *) malloc(strlen(p) + strlen("_encrypted") + 1);
+        strcpy(crypt_file_name, p);
         strcat(crypt_file_name, "_encrypted");
     }
     return crypt_file_name;
@@ -109,7 +110,7 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
     if (!encrypted) {
         init_crypt_info(&crypt_info);
         crypt_info.file_length = file_length;
-        crypt_info.file_name_length = strlen(file_name) + 1;
+        crypt_info.file_name_length = strlen(strrchr(file_name, '/') + 1) + 1;
         crypt_info.crypt_algorithm = algorithm_id == ALGORITHM_MAX ? ALGORITHM_DEFAULT : algorithm_id;
         init_algs_info(&crypt_info);
         dest_file_name = get_crypt_file_name(file_name);
@@ -168,7 +169,7 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
                 crypt_info.key[sizeof(crypt_info.key) - 1] = VERSION_CURRENT;
             }
             memcpy(dest_addr, &crypt_info, sizeof(crypt_info));
-            char *saved_name = strdup(file_name);
+            char *saved_name = strdup(strrchr(file_name, '/') + 1);
             get_file_name(&crypt_info, saved_name, strlen(saved_name) + 1);
             memcpy(dest_addr + sizeof(crypt_info), saved_name, strlen(saved_name) + 1);
             free(saved_name);
