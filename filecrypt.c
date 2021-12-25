@@ -1,5 +1,10 @@
 #include "filecrypt.h"
 
+global_config g_config = {
+    .delete_files = TRUE,
+    .overwrite_files = FALSE,
+};
+
 // Store version in the last element of key
 static int get_version(file_crypt_info *crypt_info) {
     if (crypt_info->key_length < sizeof(crypt_info->key)) {
@@ -60,6 +65,8 @@ void usage(const char *exec_name) {
     printf("            supported algorithms: [xor, aes], xor is default\n");
     printf("  -t        thread num to work, range: [1 - %d], default: 1\n", get_nprocs_conf());
     printf("  -D        open debug mode\n");
+    printf("  -n        no delete files which have been encrypted or decrypted\n");
+    printf("  -o        overwrite when the target file exists\n");
     printf("  -h        show this usage\n");
 }
 
@@ -155,6 +162,12 @@ int crypt_file(const char *file_name, int encrypt, int decrypt, const char *pass
         goto CLEANUP;
     }
 
+    // TODO: delete the origin file
+    if (!access(dest_file_name, F_OK) && g_config.overwrite_files != TRUE) {
+        printf("%s exists\n", dest_file_name);
+        goto CLEANUP;
+    }
+
     wfd = open(dest_file_name, O_RDWR | O_CREAT, st.st_mode | 0x1FF);
     ftruncate(wfd, need_space_size);
     dest_addr = mmap(NULL, need_space_size, PROT_READ | PROT_WRITE, MAP_SHARED, wfd, 0);
@@ -204,7 +217,7 @@ CLEANUP_SOURCE:
 CLEANUP:
     if (fd != -1) close(fd);
     if (wfd != -1) close(wfd);
-    if (delete_origin) unlink(file_name);
+    if (delete_origin && g_config.delete_files) unlink(file_name);
     if (delete_new) unlink(dest_file_name);
     free(dest_file_name);
     return TRUE;
@@ -268,10 +281,12 @@ int main(int argc, char **argv) {
         {"algroithm", required_argument, NULL, 'a'},
         {"thread", required_argument, NULL, 't'},
         {"debug", no_argument, NULL, 'D'},
+        {"nodelete", no_argument, NULL, 'n'},
+        {"overwrite", no_argument, NULL, 'o'},
 		{NULL, 0, NULL, 0}
     };
 
-    while ((ch = getopt_long(argc, argv, "hedrp:a:t:D", long_options, NULL)) != -1) {
+    while ((ch = getopt_long(argc, argv, "hedrp:a:t:Dno", long_options, NULL)) != -1) {
         switch (ch) {
         case 'h':
             usage(argv[0]);
@@ -303,6 +318,12 @@ int main(int argc, char **argv) {
             break;
         case 'D':
             debug_mode = TRUE;
+            break;
+        case 'n':
+            g_config.delete_files = FALSE;
+            break;
+        case 'o':
+            g_config.overwrite_files = TRUE;
             break;
         default:
             usage(argv[0]);

@@ -28,6 +28,11 @@
 #define VERSION_ENCRYPT_FILENAME       1
 #define VERSION_CURRENT                1
 
+typedef struct global_config {
+    int delete_files;
+    int overwrite_files;
+} global_config;
+
 typedef struct file_crypt_info {
     uint32_t magic[2];
     uint64_t file_name_length;
